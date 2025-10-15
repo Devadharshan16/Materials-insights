@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcureSmart Dashboard - SRM Hackathon</title>
+    <!-- Load Tailwind CSS via CDN for fast styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Load Chart.js for visualization (Updated to v4 for compatibility) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb; /* Light background */
+        }
+        .card {
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 1.5rem;
+        }
+        .chart-container {
+            height: 400px; /* Fixed height for consistent chart display */
+        }
+        /* Mobile adjustment for smaller text in table headers */
+        @media (max-width: 640px) {
+            th, td {
+                font-size: 0.75rem;
+            }
+        }
+        /* Custom track style for range input */
+        input[type=range]::-webkit-slider-runnable-track {
+            -webkit-appearance: none;
+            height: 8px;
+            background: #e0e7ff; /* Indigo-100 */
+            border-radius: 4px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800">ProcureSmart: Predictive Sourcing</h1>
+            <p class="text-gray-500 mt-1">Real-time Price Forecasting & Optimized Vendor Recommendations</p>
+        </header>
+
+        <!-- Control Panel (Updated to include sliders) -->
+        <div class="card mb-8">
+            <div class="flex flex-col md:flex-row items-center justify-between mb-6">
+                <label for="material-select" class="block text-lg font-medium text-gray-700 mb-2 md:mb-0 md:mr-4">1. Select Material:</label>
+                <select id="material-select" class="block w-full md:w-1/2 p-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base">
+                    <option value="">Loading Materials...</option>
+                </select>
+                <button onclick="fetchData()" id="fetch-button" class="mt-4 md:mt-0 md:ml-4 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 ease-in-out disabled:opacity-50" disabled>
+                    Analyze
+                </button>
+            </div>
+            
+            <!-- Dynamic Weighting Controls -->
+            <div class="mt-6 pt-4 border-t border-gray-100">
+                <h3 class="text-md font-semibold text-gray-700 mb-3 flex justify-between items-center">
+                    2. Adjust Vendor Recommendation Weighting 
+                    <span id="current-total" class="text-sm font-bold px-3 py-1 rounded-full text-white bg-red-500 transition-colors">Total: 0%</span>
+                </h3>
+                <p class="text-xs text-red-500 mb-4" id="weight-warning">
+                    Warning: Total weight must equal 100% before running analysis.
+                </p>
+                <div id="weights-container" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <!-- Price Weight -->
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <label for="weight-price" class="block text-sm font-medium text-gray-700">Price Weight (<span id="val-price">20</span>%)</label>
+                        <input type="range" id="weight-price" min="0" max="100" value="20" step="5" class="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer range-lg accent-indigo-600 mt-2" oninput="updateWeights()">
+                    </div>
+
+                    <!-- Delivery Weight -->
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <label for="weight-delivery" class="block text-sm font-medium text-gray-700">Delivery Speed Weight (<span id="val-delivery">30</span>%)</label>
+                        <input type="range" id="weight-delivery" min="0" max="100" value="30" step="5" class="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer range-lg accent-indigo-600 mt-2" oninput="updateWeights()">
+                    </div>
+
+                    <!-- Reliability Weight -->
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <label for="weight-reliability" class="block text-sm font-medium text-gray-700">Reliability Score Weight (<span id="val-reliability">50</span>%)</label>
+                        <input type="range" id="weight-reliability" min="0" max="100" value="50" step="5" class="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer range-lg accent-indigo-600 mt-2" oninput="updateWeights()">
+                    </div>
+
+                </div>
+            </div>
+
+            <p id="status-message" class="text-center mt-4 text-sm text-gray-600">Select a material to analyze prices and get vendor recommendations.</p>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Price Tracker & Prediction Chart (2/3 width on desktop) -->
+            <div class="lg:col-span-2">
+                <div class="card chart-container">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Price Trend Analysis (Historical & 7-Day Prediction)</h2>
+                    <canvas id="priceChart"></canvas>
+                </div>
+
+                <!-- Prediction Table -->
+                <div class="card mt-8 overflow-x-auto">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Predicted Prices (Next 7 Days)</h3>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prediction (USD)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lower CI</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upper CI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prediction-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Data rows will be injected here by JavaScript -->
+                            <tr><td colspan="4" class="text-center py-4 text-gray-400">Run analysis to see predictions.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Vendor Recommendation Card (1/3 width on desktop) -->
+            <div class="lg:col-span-1">
+                <div class="card sticky top-8">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.047A12.003 12.003 0 003 12c0 2.83 1.054 5.43 2.804 7.425C7.55 21.42 9.77 22 12 22s4.45-0.58 6.196-2.575C19.946 17.43 21 14.83 21 12a12.003 12.003 0 00-2.382-6.016z" />
+                        </svg>
+                        Optimal Vendor Recommendation
+                    </h2>
+                    
+                    <div id="recommendation-content">
+                        <p class="text-gray-500">No recommendation available yet.</p>
+                    </div>
+
+                    <div id="recommendation-breakdown" class="mt-6 border-t pt-4 hidden">
+                        <h4 class="font-medium text-gray-700 mb-2">Score Breakdown:</h4>
+                        <ul class="text-sm space-y-1">
+                            <li class="flex justify-between"><span>Reliability:</span> <span id="rec-reliability" class="font-semibold text-indigo-600"></span></li>
+                            <li class="flex justify-between"><span>Delivery Speed:</span> <span id="rec-delivery" class="font-semibold text-indigo-600"></span></li>
+                            <li class="flex justify-between"><span>Price Competitiveness:</span> <span id="rec-price" class="font-semibold text-indigo-600"></span></li>
+                        </ul>
+                        <div class="mt-4 p-3 bg-indigo-50 rounded-lg">
+                             <p class="text-sm font-medium text-indigo-700">
+                                Current Weights (R:D:P): <span id="current-weights" class="font-bold">50:30:20</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic (Equivalent to script.js) -->
+    <script>
+        // API Base URL (Assuming Flask runs on default port 5000)
+        const API_BASE_URL = 'http://127.0.0.1:5000/api';
+        
+        // --- GLOBAL STATE & CHART INSTANCE ---
+        let priceChart;
+        
+        // --- WEIGHTING LOGIC ---
+        function getWeights() {
+            const wPrice = parseInt(document.getElementById('weight-price').value);
+            const wDelivery = parseInt(document.getElementById('weight-delivery').value);
+            const wReliability = parseInt(document.getElementById('weight-reliability').value);
+            return { wPrice, wDelivery, wReliability };
+        }
+
+        function updateWeights() {
+            const { wPrice, wDelivery, wReliability } = getWeights();
+            const total = wPrice + wDelivery + wReliability;
+
+            // Update display values
+            document.getElementById('val-price').textContent = wPrice;
+            document.getElementById('val-delivery').textContent = wDelivery;
+            document.getElementById('val-reliability').textContent = wReliability;
+            document.getElementById('current-weights').textContent = `${wReliability}:${wDelivery}:${wPrice}`;
+            
+            // Update total display and button status
+            const totalEl = document.getElementById('current-total');
+            const button = document.getElementById('fetch-button');
+            const warning = document.getElementById('weight-warning');
+
+            totalEl.textContent = `Total: ${total}%`;
+            
+            if (total === 100) {
+                totalEl.classList.remove('bg-red-500');
+                totalEl.classList.add('bg-green-500');
+                button.disabled = false;
+                warning.classList.add('hidden');
+            } else {
+                totalEl.classList.remove('bg-green-500');
+                totalEl.classList.add('bg-red-500');
+                button.disabled = true;
+                warning.classList.remove('hidden');
+            }
+
+            // If a material is already selected, re-enable the button regardless of total, but apply a warning
+            const materialId = document.getElementById('material-select').value;
+            if (materialId && total === 100) {
+                 button.disabled = false;
+            }
+        }
+        
+        // --- UTILITY FUNCTIONS ---
+        // Function to show status messages to the user
+        function setStatus(message, isError = false) {
+            const statusElement = document.getElementById('status-message');
+            statusElement.textContent = message;
+            if (isError) {
+                statusElement.classList.remove('text-gray-600');
+                statusElement.classList.add('text-red-600');
+            } else {
+                statusElement.classList.remove('text-red-600');
+                statusElement.classList.add('text-gray-600');
+            }
+        }
+
+        // --- 1. INITIALIZATION: Fetch Materials and Populate Dropdown ---
+        async function loadMaterials() {
+            setStatus('Fetching material list...');
+            const selectElement = document.getElementById('material-select');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/materials`);
+                if (!response.ok) throw new Error('Failed to load materials API.');
+                
+                const materials = await response.json();
+                
+                // Clear initial 'Loading' option
+                selectElement.innerHTML = '<option value="" disabled selected>--- Select Material ---</option>';
+                
+                materials.forEach(m => {
+                    const materialId = m.material_id || m.materialcode || m.material;
+                    const materialName = m.name || materialId; 
+
+                    if (materialId) {
+                        const option = document.createElement('option');
+                        option.value = materialId;
+                        option.textContent = `${materialId} - ${materialName}`;
+                        selectElement.appendChild(option);
+                    }
+                });
+
+                setStatus('Materials loaded successfully. Select one and click Analyze.');
+                selectElement.onchange = () => {
+                    // Check if weights are valid before enabling button
+                    updateWeights(); 
+                    setStatus(`Ready to analyze ${selectElement.value}.`);
+                };
+
+            } catch (error) {
+                setStatus(`Error: Could not connect to backend or load materials. Is Flask running? (${error.message})`, true);
+            }
+            // Initial weight check
+            updateWeights();
+        }
+
+        // --- 2. CORE FETCH FUNCTION: Runs when 'Analyze' is clicked ---
+        async function fetchData() {
+            const materialId = document.getElementById('material-select').value;
+            if (!materialId) {
+                setStatus('Please select a material first.', true);
+                return;
+            }
+            
+            const { wPrice, wDelivery, wReliability } = getWeights();
+            if (wPrice + wDelivery + wReliability !== 100) {
+                 setStatus('Please adjust weights so they total 100% before analyzing.', true);
+                 return;
+            }
+
+            setStatus(`Analyzing ${materialId} with R:D:P weights of ${wReliability}:${wDelivery}:${wPrice}...`);
+            document.getElementById('fetch-button').disabled = true;
+
+            const vendorUrl = `${API_BASE_URL}/recommend_vendor?material_id=${materialId}&w_price=${wPrice}&w_delivery=${wDelivery}&w_reliability=${wReliability}`;
+
+            try {
+                // Use Promise.all to fetch prediction and recommendation concurrently
+                const [priceResponse, vendorResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/predict?material_id=${materialId}`),
+                    fetch(vendorUrl)
+                ]);
+
+                // Handle Price Prediction Data
+                const priceData = await priceResponse.json();
+                if (!priceResponse.ok) {
+                    throw new Error(`Price Error: ${priceData.error || priceResponse.statusText}`);
+                }
+                updatePriceChart(priceData);
+                updatePredictionTable(priceData.predictions);
+
+                // Handle Vendor Recommendation Data
+                const vendorData = await vendorResponse.json();
+                if (!vendorResponse.ok) {
+                    throw new Error(`Vendor Error: ${vendorData.error || vendorResponse.statusText}`);
+                }
+                updateVendorRecommendation(vendorData);
+
+                setStatus(`Analysis complete for ${materialId}.`);
+
+            } catch (error) {
+                setStatus(`Analysis failed. Error: ${error.message}`, true);
+            } finally {
+                document.getElementById('fetch-button').disabled = false;
+                updateWeights(); // Re-check button status
+            }
+        }
+
+        // --- 3. CHARTING FUNCTION: Display Price Trends ---
+        function updatePriceChart(data) {
+            // Check if priceChart uses Chart.js v3 or v4. Assuming v4 for this update.
+            const historical = data.historical_data.map(d => ({ 
+                x: d.date.split('T')[0], 
+                y: d.price 
+            }));
+            const predictions = data.predictions.map(p => ({ 
+                x: p.date, 
+                y: p.predicted_price 
+            }));
+            
+            const labels = [...historical.map(d => d.x), ...predictions.map(p => p.x)];
+            const historicalPrices = historical.map(d => d.y);
+            // Nulls ensure the prediction line starts only after the historical data ends
+            const predictionPrices = Array(historical.length).fill(null).concat(predictions.map(p => p.y));
+            const confidenceHigh = Array(historical.length).fill(null).concat(predictions.map(p => p.confidence_high));
+            const confidenceLow = Array(historical.length).fill(null).concat(predictions.map(p => p.confidence_low));
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+
+            // Destroy old chart instance if it exists
+            if (priceChart) {
+                priceChart.destroy();
+            }
+
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Historical Price',
+                            data: historicalPrices,
+                            borderColor: '#3b82f6', // Blue
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            tension: 0.1,
+                            pointRadius: 3,
+                            fill: false
+                        },
+                        {
+                            label: 'Predicted Price',
+                            data: predictionPrices,
+                            borderColor: '#10b981', // Green
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            borderDash: [5, 5],
+                            tension: 0.1,
+                            pointRadius: 4,
+                            fill: false
+                        },
+                        // Confidence Interval (Area)
+                         {
+                            label: 'Upper CI',
+                            data: confidenceHigh,
+                            borderColor: '#fcd34d', 
+                            backgroundColor: 'transparent',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            borderDash: [2, 2],
+                            fill: '-1', 
+                            tension: 0.1,
+                        },
+                        {
+                            label: 'Lower CI',
+                            data: confidenceLow,
+                            borderColor: '#fcd34d',
+                            backgroundColor: 'rgba(252, 211, 77, 0.1)', // Light fill color
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            borderDash: [2, 2],
+                            fill: 'origin', 
+                            tension: 0.1,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: { display: true, text: 'Price (USD)' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Date' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- 4. TABLE FUNCTION: Display Predictions in detail ---
+        function updatePredictionTable(predictions) {
+            const tbody = document.getElementById('prediction-table-body');
+            tbody.innerHTML = ''; // Clear previous data
+
+            if (predictions.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-400">No predictions generated.</td></tr>';
+                 return;
+            }
+
+            predictions.forEach(p => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50';
+                
+                // Date
+                let cell = row.insertCell();
+                cell.textContent = p.date;
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900';
+                
+                // Prediction
+                cell = row.insertCell();
+                cell.textContent = `$${p.predicted_price.toFixed(2)}`;
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-indigo-600 font-semibold';
+                
+                // Lower CI
+                cell = row.insertCell();
+                cell.textContent = `$${p.confidence_low.toFixed(2)}`;
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500';
+                
+                // Upper CI
+                cell = row.insertCell();
+                cell.textContent = `$${p.confidence_high.toFixed(2)}`;
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500';
+            });
+        }
+
+        // --- 5. VENDOR FUNCTION: Display Best Vendor Recommendation ---
+        function updateVendorRecommendation(data) {
+            const contentDiv = document.getElementById('recommendation-content');
+            const breakdownDiv = document.getElementById('recommendation-breakdown');
+            const bestVendor = data.best_vendor;
+
+            if (!bestVendor || !bestVendor.vendor_id) {
+                contentDiv.innerHTML = '<p class="text-gray-500">No optimal vendor found for this material.</p>';
+                breakdownDiv.classList.add('hidden');
+                return;
+            }
+
+            contentDiv.innerHTML = `
+                <div class="space-y-3">
+                    <p class="text-3xl font-bold text-green-600">${bestVendor.vendor_id}</p>
+                    <p class="text-sm text-gray-600">
+                        This vendor provides the best balance based on your current weighting preferences.
+                    </p>
+                    <ul class="list-disc list-inside text-gray-700 space-y-1">
+                        <li>
+                            <span class="font-semibold">Current Price:</span> $${bestVendor.price_per_unit.toFixed(2)} / Unit
+                        </li>
+                        <li>
+                            <span class="font-semibold">Delivery Time:</span> ${bestVendor.delivery_days} Days
+                        </li>
+                        <li>
+                            <span class="font-semibold">Reliability Score:</span> ${bestVendor.reliability_score.toFixed(1)} / 5.0
+                        </li>
+                    </ul>
+                    <div class="mt-4 p-3 bg-green-50 rounded-lg">
+                        <span class="text-sm font-medium text-green-700">
+                            Optimal Score: 
+                        </span>
+                        <span class="text-lg font-bold text-green-900">${(data.weighted_score * 100).toFixed(2)}%</span>
+                    </div>
+                </div>
+            `;
+            
+            // Update score breakdown section
+            document.getElementById('rec-reliability').textContent = (data.score_breakdown.reliability * 100).toFixed(2) + '%';
+            document.getElementById('rec-delivery').textContent = (data.score_breakdown.delivery * 100).toFixed(2) + '%';
+            document.getElementById('rec-price').textContent = (data.score_breakdown.price * 100).toFixed(2) + '%';
+            breakdownDiv.classList.remove('hidden');
+        }
+
+        // Initialize the app on load
+        window.onload = loadMaterials;
+
+    </script>
+</body>
+</html>

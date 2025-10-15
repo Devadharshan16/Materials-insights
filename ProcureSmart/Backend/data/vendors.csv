@@ -1,0 +1,16 @@
+material_id,vendor_id,price_per_unit,delivery_days,reliability_score
+Steel,VendorA,52.8,2,4.8
+Steel,VendorB,51.8,4,4.2
+Steel,VendorC,52.0,3,4.9
+Copper,VendorA,67.0,2,4.8
+Copper,VendorB,66.5,4,4.2
+Copper,VendorC,68.1,3,4.9
+Aluminum,VendorA,48.2,2,4.8
+Aluminum,VendorB,47.8,4,4.2
+Aluminum,VendorC,47.5,3,4.9
+Cement,VendorA,362,2,4.8
+Cement,VendorB,359,4,4.2
+Cement,VendorC,360,3,4.9
+Plastic,VendorA,79,2,4.8
+Plastic,VendorB,81,4,4.2
+Plastic,VendorC,82,3,4.9
